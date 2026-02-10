@@ -206,25 +206,62 @@ def confirm_overwrite(path: str) -> bool:
         return False
 
 
+def prompt_for_input(prompt: str, default: Optional[str] = None) -> str:
+    """
+    Prompt user for input with optional default value.
+
+    Args:
+        prompt: The prompt to display
+        default: Default value if user presses Enter
+
+    Returns:
+        User input or default value
+    """
+    try:
+        if default:
+            response = input(f"{prompt} [{default}]: ").strip()
+            return response if response else default
+        else:
+            response = input(f"{prompt}: ").strip()
+            return response
+    except (EOFError, KeyboardInterrupt):
+        print()
+        sys.exit(0)
+
+
 def main():
     """CLI entry point."""
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print(f"Usage: {sys.argv[0]} <file.spro> [output.csv]", file=sys.stderr)
+    if len(sys.argv) > 3:
+        print(f"Usage: {sys.argv[0]} [file.spro] [output.csv]", file=sys.stderr)
         print("\nExtracts all Time of Day values from a SPRO file.", file=sys.stderr)
-        print("Output defaults to <input>-tod.csv in current directory.", file=sys.stderr)
+        print("If no arguments provided, prompts for input.", file=sys.stderr)
         sys.exit(1)
 
-    spro_path = sys.argv[1]
+    # Get input file
+    if len(sys.argv) >= 2:
+        spro_path = sys.argv[1]
+    else:
+        spro_path = prompt_for_input("SPRO file")
+
+    if not spro_path:
+        print("Error: No input file specified.", file=sys.stderr)
+        sys.exit(1)
 
     if not os.path.exists(spro_path):
         print(f"Error: File not found: {spro_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Determine output path
+    # Get output file
+    default_output = get_default_output_path(spro_path)
     if len(sys.argv) == 3:
         output_path = sys.argv[2]
+    elif len(sys.argv) == 2:
+        output_path = default_output
     else:
-        output_path = get_default_output_path(spro_path)
+        output_path = prompt_for_input("Output CSV file", default_output)
+
+    if not output_path:
+        output_path = default_output
 
     # Check if output file exists
     if os.path.exists(output_path):
