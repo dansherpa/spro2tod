@@ -108,14 +108,19 @@ def extract_channel_data(conn: sqlite3.Connection, run: int, channel: str) -> Li
     return results
 
 
-def process_spro(spro_path: str, output_path: Optional[str] = None) -> None:
+def process_spro(spro_path: str, output_path: str) -> None:
     """
     Process a SPRO file and output CSV of all ToD values.
 
     Args:
         spro_path: Path to the .spro file
-        output_path: Path for output CSV (defaults to stdout)
+        output_path: Path for output CSV
     """
+    spro_full_path = os.path.abspath(spro_path)
+    output_full_path = os.path.abspath(output_path)
+
+    print(f"Reading {spro_full_path}")
+
     # Extract SPRO file to temp directory
     tempdir = tempfile.mkdtemp(prefix="spro2tod_")
 
@@ -125,41 +130,42 @@ def process_spro(spro_path: str, output_path: Optional[str] = None) -> None:
 
         db_path = os.path.join(tempdir, "File2")
         if not os.path.exists(db_path):
-            print(f"Error: Database file 'File2' not found in {spro_path}", file=sys.stderr)
+            print(f"Error: Database file 'File2' not found in {spro_full_path}", file=sys.stderr)
             sys.exit(1)
 
         conn = sqlite3.connect(db_path)
 
+        print("Extracting ToD")
+
         # Collect all timing data
         all_data = []
         runs = get_runs(conn)
+        bibs = set()
 
         for run in runs:
             for channel in ["Start", "Finish"]:
                 channel_data = extract_channel_data(conn, run, channel)
                 all_data.extend(channel_data)
+                for bib, _, _, _ in channel_data:
+                    bibs.add(bib)
 
         conn.close()
+
+        print(f"Extracted times for {len(bibs)} bibs and {len(runs)} runs")
 
         # Sort by bib, then run, then channel (Start before Finish)
         all_data.sort(key=lambda x: (x[0], x[1], x[2] != "Start"))
 
-        # Output CSV
-        if output_path:
-            out_file = open(output_path, 'w', newline='')
-        else:
-            out_file = sys.stdout
+        # Write CSV
+        print(f"Writing to {output_full_path}")
 
-        try:
+        with open(output_path, 'w', newline='') as out_file:
             writer = csv.writer(out_file)
             writer.writerow(["Bib", "Run", "Channel", "ToD"])
 
             for bib, run, channel, micros in all_data:
                 tod = format_tod(micros)
                 writer.writerow([bib, run, channel, tod])
-        finally:
-            if output_path:
-                out_file.close()
 
     finally:
         # Cleanup temp files
@@ -167,20 +173,64 @@ def process_spro(spro_path: str, output_path: Optional[str] = None) -> None:
         shutil.rmtree(tempdir, ignore_errors=True)
 
 
+def get_default_output_path(spro_path: str) -> str:
+    """
+    Generate default output path from input path.
+
+    Args:
+        spro_path: Path to the .spro file
+
+    Returns:
+        Path like "foobar-tod.csv" for input "foobar.spro"
+    """
+    base = os.path.basename(spro_path)
+    root, _ = os.path.splitext(base)
+    return f"{root}-tod.csv"
+
+
+def confirm_overwrite(path: str) -> bool:
+    """
+    Ask user for permission to overwrite existing file.
+
+    Args:
+        path: Path to the file that would be overwritten
+
+    Returns:
+        True if user confirms, False otherwise
+    """
+    try:
+        response = input(f"File {os.path.abspath(path)} already exists. Overwrite? [y/N]: ")
+        return response.lower().strip() == 'y'
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 def main():
     """CLI entry point."""
     if len(sys.argv) < 2 or len(sys.argv) > 3:
         print(f"Usage: {sys.argv[0]} <file.spro> [output.csv]", file=sys.stderr)
         print("\nExtracts all Time of Day values from a SPRO file.", file=sys.stderr)
-        print("If output.csv is not specified, writes to stdout.", file=sys.stderr)
+        print("Output defaults to <input>-tod.csv in current directory.", file=sys.stderr)
         sys.exit(1)
 
     spro_path = sys.argv[1]
-    output_path = sys.argv[2] if len(sys.argv) == 3 else None
 
     if not os.path.exists(spro_path):
         print(f"Error: File not found: {spro_path}", file=sys.stderr)
         sys.exit(1)
+
+    # Determine output path
+    if len(sys.argv) == 3:
+        output_path = sys.argv[2]
+    else:
+        output_path = get_default_output_path(spro_path)
+
+    # Check if output file exists
+    if os.path.exists(output_path):
+        if not confirm_overwrite(output_path):
+            print("Aborted.")
+            sys.exit(0)
 
     process_spro(spro_path, output_path)
 
