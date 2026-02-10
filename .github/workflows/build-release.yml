@@ -11,13 +11,16 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: spro2tod
-            asset_name: spro2tod-linux-amd64
+            asset_name: spro2tod-linux-x64
+          - os: macos-13
+            artifact_name: spro2tod
+            asset_name: spro2tod-macos-intel
           - os: macos-latest
             artifact_name: spro2tod
-            asset_name: spro2tod-macos-amd64
+            asset_name: spro2tod-macos-apple-silicon
           - os: windows-latest
             artifact_name: spro2tod.exe
-            asset_name: spro2tod-windows-amd64.exe
+            asset_name: spro2tod-windows-x64.exe
 
     runs-on: ${{ matrix.os }}
 
@@ -36,9 +39,17 @@ jobs:
       - name: Build executable
         run: pyinstaller --onefile src/spro2tod/spro2tod.py --name spro2tod
 
+      - name: Rename artifact (Unix)
+        if: runner.os != 'Windows'
+        run: mv dist/${{ matrix.artifact_name }} dist/${{ matrix.asset_name }}
+
+      - name: Rename artifact (Windows)
+        if: runner.os == 'Windows'
+        run: move dist\${{ matrix.artifact_name }} dist\${{ matrix.asset_name }}
+
       - name: Upload release asset
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/${{ matrix.artifact_name }}
+          files: dist/${{ matrix.asset_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
