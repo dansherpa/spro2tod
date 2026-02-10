@@ -4,6 +4,9 @@ on:
   release:
     types: [created]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -12,7 +15,7 @@ jobs:
           - os: ubuntu-latest
             artifact_name: spro2tod
             asset_name: spro2tod-linux-x64
-          - os: macos-13
+          - os: macos-12
             artifact_name: spro2tod
             asset_name: spro2tod-macos-intel
           - os: macos-latest
