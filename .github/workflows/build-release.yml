@@ -1,0 +1,44 @@
+name: Build Release Executables
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: spro2tod
+            asset_name: spro2tod-linux-amd64
+          - os: macos-latest
+            artifact_name: spro2tod
+            asset_name: spro2tod-macos-amd64
+          - os: windows-latest
+            artifact_name: spro2tod.exe
+            asset_name: spro2tod-windows-amd64.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --onefile src/spro2tod/spro2tod.py --name spro2tod
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/${{ matrix.artifact_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
