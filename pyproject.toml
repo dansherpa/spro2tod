@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spro2tod"
+version = "0.1.0"
+authors = [
+    { name = "Dan Kennedy", email = "dansherpa@gmail.com" },
+]
+description = "Extracts all Time of Day data from SPRO files as CSV"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/dansherpa/spro2tod"
+Issues = "https://github.com/dansherpa/spro2tod/issues"
+
+[project.scripts]
+spro2tod = "spro2tod.spro2tod:main"

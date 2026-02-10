@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""
+spro2tod - Extract Time of Day (ToD) data from Vola SPRO files.
+
+Reads a SPRO file (ZIP archive containing SQLite timing database) and
+outputs all ToD values for all bibs across both Start and Finish channels.
+"""
+
+import csv
+import os
+import sqlite3
+import sys
+import tempfile
+import zipfile
+from datetime import datetime, timezone
+from typing import List, Optional, Tuple
+
+
+def format_tod(microseconds: int) -> str:
+    """
+    Format microseconds since Unix epoch as ToD string.
+
+    Args:
+        microseconds: Time in microseconds since Unix epoch
+
+    Returns:
+        Formatted string like "10h17:07.3180"
+    """
+    seconds = microseconds / 1_000_000
+    dt = datetime.fromtimestamp(seconds, tz=timezone.utc)
+
+    # Extract sub-second portion (4 decimal places)
+    fractional = microseconds % 1_000_000
+    sub_seconds = f"{fractional:06d}"[:4]
+
+    return f"{dt.hour}h{dt.minute:02d}:{dt.second:02d}.{sub_seconds}"
+
+
+def get_runs(conn: sqlite3.Connection) -> List[int]:
+    """
+    Discover which runs exist in the database by checking for timing tables.
+
+    Args:
+        conn: SQLite database connection
+
+    Returns:
+        List of run numbers found
+    """
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'TTIMERECORDS_HEAT%'")
+    tables = [row[0] for row in cursor.fetchall()]
+
+    runs = set()
+    for table in tables:
+        # Extract run number from table name like TTIMERECORDS_HEAT1_START
+        parts = table.split('_')
+        if len(parts) >= 2:
+            heat_part = parts[1]  # e.g., "HEAT1"
+            if heat_part.startswith('HEAT'):
+                try:
+                    run_num = int(heat_part[4:])
+                    runs.add(run_num)
+                except ValueError:
+                    pass
+
+    return sorted(runs)
+
+
+def extract_channel_data(conn: sqlite3.Connection, run: int, channel: str) -> List[Tuple[int, int, str, int]]:
+    """
+    Extract ToD data for all bibs from a specific channel table.
+
+    Args:
+        conn: SQLite database connection
+        run: Run number
+        channel: "Start" or "Finish"
+
+    Returns:
+        List of (bib, run, channel, microseconds) tuples
+    """
+    table_name = f"TTIMERECORDS_HEAT{run}_{channel.upper()}"
+
+    # Check if table exists
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,)
+    )
+    if not cursor.fetchone():
+        return []
+
+    query = f'''
+        SELECT "C_NUM" AS bib, "C_HOUR2" AS micros
+        FROM "{table_name}"
+        WHERE "C_STATUS" = 0
+        AND "C_NUM" > 0
+        AND ("C_NUM" < 901 OR "C_NUM" > 909)
+        ORDER BY "C_NUM"
+    '''
+
+    cursor.execute(query)
+    results = []
+    for row in cursor.fetchall():
+        bib, micros = row
+        if micros is not None:
+            results.append((int(bib), run, channel, int(micros)))
+
+    return results
+
+
+def process_spro(spro_path: str, output_path: Optional[str] = None) -> None:
+    """
+    Process a SPRO file and output CSV of all ToD values.
+
+    Args:
+        spro_path: Path to the .spro file
+        output_path: Path for output CSV (defaults to stdout)
+    """
+    # Extract SPRO file to temp directory
+    tempdir = tempfile.mkdtemp(prefix="spro2tod_")
+
+    try:
+        with zipfile.ZipFile(spro_path, 'r') as zip_obj:
+            zip_obj.extractall(path=tempdir)
+
+        db_path = os.path.join(tempdir, "File2")
+        if not os.path.exists(db_path):
+            print(f"Error: Database file 'File2' not found in {spro_path}", file=sys.stderr)
+            sys.exit(1)
+
+        conn = sqlite3.connect(db_path)
+
+        # Collect all timing data
+        all_data = []
+        runs = get_runs(conn)
+
+        for run in runs:
+            for channel in ["Start", "Finish"]:
+                channel_data = extract_channel_data(conn, run, channel)
+                all_data.extend(channel_data)
+
+        conn.close()
+
+        # Sort by bib, then run, then channel (Start before Finish)
+        all_data.sort(key=lambda x: (x[0], x[1], x[2] != "Start"))
+
+        # Output CSV
+        if output_path:
+            out_file = open(output_path, 'w', newline='')
+        else:
+            out_file = sys.stdout
+
+        try:
+            writer = csv.writer(out_file)
+            writer.writerow(["Bib", "Run", "Channel", "ToD"])
+
+            for bib, run, channel, micros in all_data:
+                tod = format_tod(micros)
+                writer.writerow([bib, run, channel, tod])
+        finally:
+            if output_path:
+                out_file.close()
+
+    finally:
+        # Cleanup temp files
+        import shutil
+        shutil.rmtree(tempdir, ignore_errors=True)
+
+
+def main():
+    """CLI entry point."""
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print(f"Usage: {sys.argv[0]} <file.spro> [output.csv]", file=sys.stderr)
+        print("\nExtracts all Time of Day values from a SPRO file.", file=sys.stderr)
+        print("If output.csv is not specified, writes to stdout.", file=sys.stderr)
+        sys.exit(1)
+
+    spro_path = sys.argv[1]
+    output_path = sys.argv[2] if len(sys.argv) == 3 else None
+
+    if not os.path.exists(spro_path):
+        print(f"Error: File not found: {spro_path}", file=sys.stderr)
+        sys.exit(1)
+
+    process_spro(spro_path, output_path)
+
+
+if __name__ == '__main__':
+    main()
