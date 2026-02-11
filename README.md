@@ -50,18 +50,31 @@ A missing Finish entry (with a corresponding Start) indicates a DNF.
 
 Download the appropriate executable for your platform from the [Releases](https://github.com/dansherpa/spro2tod/releases) page:
 
-- `spro2tod-linux-x64` - Linux (Intel/AMD)
-- `spro2tod-macos-intel` - macOS (Intel)
+- `spro2tod-linux-x64` - Linux
 - `spro2tod-macos-apple-silicon` - macOS (M1/M2/M3/M4)
 - `spro2tod-windows-x64.exe` - Windows
 
-### Install from source
+### Install with pip (macOS Intel and others)
 
-Requires Python 3.8+
+If you have Python 3.8+ installed, you can install directly with pip:
 
 ```bash
 pip install git+https://github.com/dansherpa/spro2tod.git
 ```
+
+Then run with:
+
+```bash
+spro2tod
+```
+
+To check if you have Python installed:
+
+```bash
+python3 --version
+```
+
+If not installed, download from https://www.python.org/downloads/
 
 ## Building a release
 
