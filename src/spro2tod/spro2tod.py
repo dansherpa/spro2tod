@@ -122,9 +122,11 @@ def extract_run_data(conn: sqlite3.Connection, run: int) -> List[Tuple[int, int,
             bib, micros, status = row
             bib = int(bib)
             finish_bibs.add(bib)
-            if status == 0 and micros is not None:
+            if micros is not None:
+                # Output time for both valid finishes and DSQs
                 results.append((bib, run, "Finish", format_tod(int(micros))))
             else:
+                # No finish time recorded = DNF
                 results.append((bib, run, "Finish", "DNF"))
 
     # Add DNF entries for bibs that started but have no finish record
