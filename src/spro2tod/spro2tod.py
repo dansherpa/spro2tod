@@ -66,44 +66,70 @@ def get_runs(conn: sqlite3.Connection) -> List[int]:
     return sorted(runs)
 
 
-def extract_channel_data(conn: sqlite3.Connection, run: int, channel: str) -> List[Tuple[int, int, str, int]]:
+def extract_run_data(conn: sqlite3.Connection, run: int) -> List[Tuple[int, int, str, str]]:
     """
-    Extract ToD data for all bibs from a specific channel table.
+    Extract ToD data for all bibs from a specific run.
 
     Args:
         conn: SQLite database connection
         run: Run number
-        channel: "Start" or "Finish"
 
     Returns:
-        List of (bib, run, channel, microseconds) tuples
+        List of (bib, run, channel, tod) tuples where tod is formatted time or "DNF"
     """
-    table_name = f"TTIMERECORDS_HEAT{run}_{channel.upper()}"
-
-    # Check if table exists
     cursor = conn.cursor()
+    results = []
+    start_bibs = set()
+    finish_bibs = set()
+
+    # Extract Start data (all statuses)
+    start_table = f"TTIMERECORDS_HEAT{run}_START"
     cursor.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        (table_name,)
+        (start_table,)
     )
-    if not cursor.fetchone():
-        return []
+    if cursor.fetchone():
+        query = f'''
+            SELECT "C_NUM" AS bib, "C_HOUR2" AS micros
+            FROM "{start_table}"
+            WHERE "C_NUM" > 0
+            AND ("C_NUM" < 901 OR "C_NUM" > 909)
+            ORDER BY "C_NUM"
+        '''
+        cursor.execute(query)
+        for row in cursor.fetchall():
+            bib, micros = row
+            if micros is not None:
+                results.append((int(bib), run, "Start", format_tod(int(micros))))
+                start_bibs.add(int(bib))
 
-    query = f'''
-        SELECT "C_NUM" AS bib, "C_HOUR2" AS micros
-        FROM "{table_name}"
-        WHERE "C_STATUS" = 0
-        AND "C_NUM" > 0
-        AND ("C_NUM" < 901 OR "C_NUM" > 909)
-        ORDER BY "C_NUM"
-    '''
+    # Extract Finish data (all statuses, but mark non-zero status as DNF)
+    finish_table = f"TTIMERECORDS_HEAT{run}_FINISH"
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (finish_table,)
+    )
+    if cursor.fetchone():
+        query = f'''
+            SELECT "C_NUM" AS bib, "C_HOUR2" AS micros, "C_STATUS" AS status
+            FROM "{finish_table}"
+            WHERE "C_NUM" > 0
+            AND ("C_NUM" < 901 OR "C_NUM" > 909)
+            ORDER BY "C_NUM"
+        '''
+        cursor.execute(query)
+        for row in cursor.fetchall():
+            bib, micros, status = row
+            bib = int(bib)
+            finish_bibs.add(bib)
+            if status == 0 and micros is not None:
+                results.append((bib, run, "Finish", format_tod(int(micros))))
+            else:
+                results.append((bib, run, "Finish", "DNF"))
 
-    cursor.execute(query)
-    results = []
-    for row in cursor.fetchall():
-        bib, micros = row
-        if micros is not None:
-            results.append((int(bib), run, channel, int(micros)))
+    # Add DNF entries for bibs that started but have no finish record
+    for bib in start_bibs - finish_bibs:
+        results.append((bib, run, "Finish", "DNF"))
 
     return results
 
@@ -143,11 +169,10 @@ def process_spro(spro_path: str, output_path: str) -> None:
         bibs = set()
 
         for run in runs:
-            for channel in ["Start", "Finish"]:
-                channel_data = extract_channel_data(conn, run, channel)
-                all_data.extend(channel_data)
-                for bib, _, _, _ in channel_data:
-                    bibs.add(bib)
+            run_data = extract_run_data(conn, run)
+            all_data.extend(run_data)
+            for bib, _, _, _ in run_data:
+                bibs.add(bib)
 
         conn.close()
 
@@ -163,8 +188,7 @@ def process_spro(spro_path: str, output_path: str) -> None:
             writer = csv.writer(out_file)
             writer.writerow(["Bib", "Run", "Channel", "ToD"])
 
-            for bib, run, channel, micros in all_data:
-                tod = format_tod(micros)
+            for bib, run, channel, tod in all_data:
                 writer.writerow([bib, run, channel, tod])
 
     finally:
