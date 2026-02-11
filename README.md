@@ -40,9 +40,11 @@ Bib,Run,Channel,ToD
 613,1,Finish,10h17:45.4274
 613,2,Start,10h32:25.7294
 613,2,Finish,10h33:01.9466
+7736,2,Start,10h31:04.6198
+7736,2,Finish,DNF
 ```
 
-A missing Finish entry (with a corresponding Start) indicates a DNF.
+A Finish entry with `DNF` as the ToD indicates a Did Not Finish or Disqualification.
 
 ## Installation
 
