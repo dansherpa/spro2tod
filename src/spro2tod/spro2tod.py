@@ -93,7 +93,6 @@ def extract_run_data(conn: sqlite3.Connection, run: int) -> List[Tuple[int, int,
             SELECT "C_NUM" AS bib, "C_HOUR2" AS micros
             FROM "{start_table}"
             WHERE "C_NUM" > 0
-            AND ("C_NUM" < 901 OR "C_NUM" > 909)
             ORDER BY "C_NUM"
         '''
         cursor.execute(query)
@@ -114,7 +113,6 @@ def extract_run_data(conn: sqlite3.Connection, run: int) -> List[Tuple[int, int,
             SELECT "C_NUM" AS bib, "C_HOUR2" AS micros, "C_STATUS" AS status
             FROM "{finish_table}"
             WHERE "C_NUM" > 0
-            AND ("C_NUM" < 901 OR "C_NUM" > 909)
             ORDER BY "C_NUM"
         '''
         cursor.execute(query)
